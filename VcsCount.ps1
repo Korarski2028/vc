@@ -12,51 +12,47 @@ $vcenterList = Get-Content -Path ".\vcenters.txt"
 # Import the credential securely
 $cred = Import-Clixml -Path "$env:USERPROFILE\secure_cred.xml"
 
-# Use it as needed, e.g., in a script that requires credentials
-$cred.UserName
-$cred.GetNetworkCredential().Password
-
-# Disable certificate check for vc
-Set-PowerCLIConfiguration -InvalidCertificateAction Ignore -Confirm:$false
-
-# Output hashtable to store results of our query 
+# Store results
 $sessionResults = @()
 
 foreach ($vcenter in $vcenterList) {
     try {
         Write-Host "`nConnecting to vCenter: $vcenter..." -ForegroundColor Cyan
-        $connection = Connect-VIServer -Server $vcenter -ErrorAction Stop
+        Connect-VIServer -Server $vcenter -ErrorAction Stop
 
-        # Get all sessions from the vCenter
-        $sessions = Get-Session
+        # Get SessionManager view
+        $sessionManager = Get-View -Id "SessionManager-SessionManager"
 
-        # Count sessions per user
-        $grouped = $sessions | Group-Object -Property UserName | Sort-Object -Property Count -Descending
+        if ($sessionManager.SessionList) {
+            # Group sessions by user
+            $groupedSessions = $sessionManager.SessionList |
+                Group-Object -Property UserName | Sort-Object Count -Descending
 
-        foreach ($group in $grouped) {
+            foreach ($group in $groupedSessions) {
+                $sessionResults += [PSCustomObject]@{
+                    VCenter      = $vcenter
+                    UserName     = $group.Name
+                    SessionCount = $group.Count
+                }
+            }
+
+            # Add total session count
             $sessionResults += [PSCustomObject]@{
                 VCenter      = $vcenter
-                UserName     = $group.Name
-                SessionCount = $group.Count
+                UserName     = "TOTAL"
+                SessionCount = $sessionManager.SessionList.Count
             }
         }
-
-        # Add total sessions
-        $sessionResults += [PSCustomObject]@{
-            VCenter      = $vcenter
-            UserName     = "TOTAL"
-            SessionCount = $sessions.Count
+        else {
+            Write-Warning "No active sessions found on $vcenter."
         }
 
         Disconnect-VIServer -Server $vcenter -Confirm:$false
     }
     catch {
-        Write-Warning "Failed to connect to $vcenter: $_"
+        Write-Warning "Error connecting to $vcenter: $_"
     }
 }
 
-# Display the results
+# Display the session count per user and total
 $sessionResults | Format-Table -AutoSize
-
-# Export to CSV
-$sessionResults | Export-Csv -Path ".\Sessions.csv" -NoTypeInformation
