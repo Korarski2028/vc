@@ -1,4 +1,4 @@
-﻿#   Script to count sessions per Vcenter if you provide a txt file with the list
+#   Script to count sessions per Vcenter if you provide a txt file with the list
 #   # Prompt for credentials
 #    $cred = Get-Credential
 # Export to XML with encryption tied to current user
@@ -7,8 +7,9 @@
 #
 #######################################################################################################
 # Load the list of vCenter servers
-$vcenterList = Get-Content -Path ".\vcenters.txt"
 
+
+# Custom function to get sessions (adapted from VMware community scripts)
 function Get-ViSession {
     param($Server)
     $sessionMgr = Get-View $Server.ExtensionData.Client.ServiceContent.SessionManager
@@ -29,7 +30,7 @@ function Get-ViSession {
 }
 
 # Initialize variables
-$vCenters = Get-Content $InputFile
+$vCenters = Get-Content -Path ".\vcenters.txt"
 $credential = Get-Credential -Message "Enter vCenter credentials"
 $totalSessions = 0
 $reportData = @()
@@ -59,12 +60,13 @@ foreach ($vc in $vCenters) {
     }
 }
 
-# Generate report
+#  Generate report for sessions
 $reportData | Export-Csv -Path $OutputFile -NoTypeInformation -UseCulture
-
-# Display summary
+ 
+#   Display summary of current array
 Write-Host "`nReport Summary:"
 $reportData | Group-Object vCenterServer | ForEach-Object {
     Write-Host ("{0}: {1} sessions" -f $_.Name, $_.Count)
 }
 Write-Host ("`nGrand Total: {0} sessions across {1} vCenters" -f $totalSessions, $vCenters.Count)
+
