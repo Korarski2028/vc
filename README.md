@@ -58,7 +58,7 @@ finally {
 
 
 
-<#
+<#  other tests I made 
 # Establish SFTP connection to copy json and installer json.sh
 try {
     $Session = New-SFTPSession -ComputerName $CvmIp -Port $Port -Credential $Credential -AcceptKey
