@@ -9,3 +9,6 @@
 3 change script permissios
 4 execute
 5 catch errors
+$ptr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($securePassword)
+$password = [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr)
+[System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr)
