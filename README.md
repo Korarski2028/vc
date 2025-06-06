@@ -12,16 +12,5 @@
 6 debug
 
 
--------------------------------
-  # Output details
-            [PSCustomObject]@{
-                Hostname            = $host.Name
-                DatastoreName       = $ds.Name
-                DatastoreStatus     = $ds.State
-                DatastoreType       = $ds.Type
-                DatastoreCluster    = $dsCluster.Name
-                CapacityGB          = [math]::Round($ds.CapacityGB,2)
-                FreeSpaceGB         = [math]::Round($ds.FreeSpaceGB,2)
-                NumberOfPaths       = $numberOfPaths
-                Protocol            = $protocol
+
             }
