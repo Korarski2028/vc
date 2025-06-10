@@ -1,72 +1,59 @@
 ﻿#  to get nvme datasrores and paths 
 ####################################################################
-$cluster #read from file 
-$vhost #read from file vC NAME
-
 # Connect to vCenter
-Connect-VIServer -Server $vhost -Credentials $creds
+Connect-VIServer -Server your_vcenter_server
 
-# Define clusters of interest
-$clusters = @("Cluster-A", "Cluster-B")
+$clusterName = "xxxxxxxxxxx"
+$cluster = Get-Cluster -Name $clusterName
 
-# Output array
-$report = @()
+# HBAs of interest (NVMe over TCP adapters)
+$targetHBAs = @("vmhba64", "vmhba65")
 
+$results = @()
 
-foreach ($clusterName in $clusters) {
-   # $cluster = Get-Cluster -Name $clusterName
-    $hosts = Get-VMHost -Location $cluster
+foreach ($host in Get-VMHost -Location $cluster) {
+    # Get the HBAs matching vmhba64 and vmhba65
+    $hbas = Get-VMHostHba -VMHost $host | Where-Object { $targetHBAs -contains $_.Device }
 
-    foreach ($host in $hosts) {
-        Write-Host "Processing host: $($host.Name)"
+    foreach ($hba in $hbas) {
+        # Get all disk LUNs on this HBA
+        $luns = Get-ScsiLun -VMHost $host -Hba $hba -LunType disk
 
-        # Get host storage system view
-        $hostView = Get-View -Id $host.Id
-        $storageSys = Get-View $hostView.ConfigManager.StorageSystem
+        foreach ($lun in $luns) {
+            # Get datastore(s) using this LUN (if any)
+            $datastores = Get-Datastore -VMHost $host | Where-Object {
+                $_.ExtensionData.Info.Vmfs.Extent | Where-Object { $_.DiskName -eq $lun.CanonicalName }
+            } | Select-Object -ExpandProperty Name
 
-        # Refresh storage info (optional but good to ensure up-to-date path info)
-        # $storageSys.RefreshStorageSystem()
+            $dsName = if ($datastores) { $datastores -join "," } else { "N/A" }
 
-        # Get all disk-type LUNs
-        $scsiLuns = Get-ScsiLun -VmHost $host -LunType disk | Where-Object {
-            $_.CanonicalName -like "naa.*"
-        }
-
-        foreach ($lun in $scsiLuns) {
-            # Get paths
+            # Get all paths for this LUN
             $paths = Get-ScsiLunPath -ScsiLun $lun
 
-            # Try to extract transport type via extensions or description
-            $transType = $lun.ExtensionData.Transport
+            # Count active paths on this HBA
+            $activePathsOnHba = ($paths | Where-Object { $_.State -eq "active" -and $_.HbaName -eq $hba.Device }).Count
 
-            # Some ESXi versions expose "nvme-tcp" in DisplayName or Vendor
-            $nvmeTCPMatch = ($lun.Model -match "nvme" -and $lun.Vendor -match "tcp") -or
-                            ($transType -match "nvme") -or
-                            ($lun.DisplayName -match "nvme.*tcp")
+            # Transport type from the lun (e.g., NVMe/TCP)
+            $transport = $lun.Transport
 
-            if ($nvmeTCPMatch) {
-                # Try to resolve datastore name from LUN (can be multiple)
-                $datastore = ($lun | Get-Datastore | Select-Object -First 1).Name
-
-                $report += [PSCustomObject]@{
-                    Host         = $host.Name
-                    Datastore    = $datastore
-                    CanonicalLUN = $lun.CanonicalName
-                    NumPaths     = $paths.Count
-                    Multipath    = $lun.MultipathPolicy
-                    Transport    = $transType
-                    Vendor       = $lun.Vendor
-                    Model        = $lun.Model
-                }
+            $results += [PSCustomObject]@{
+                HostName        = $host.Name
+                HBAName         = $hba.Device
+                LUNCanonical    = $lun.CanonicalName
+                DatastoreName   = $dsName
+                LunType         = $lun.LunType
+                Transport       = $transport
+                ActivePathCount = $activePathsOnHba
             }
         }
     }
 }
 
-# Export to CSV
-$report | Export-Csv -Path "C:\Temp\nvme_tcp_datastores.csv" -NoTypeInformation
+# Output the results
+$results | Format-Table -AutoSize
 
-Write-Host "Report saved to C:\Temp\nvme_tcp_datastores.csv"
+# Optionally export to CSV
+#$results | Export-Csv -Path "NVMeTCP_Devices_Report.csv" -NoTypeInformation
 
-# Disconnect session
-Disconnect-VIServer -Confirm:$false
+# Disconnect from vCenter
+Disconnect-VIServer -Confirm:$false
